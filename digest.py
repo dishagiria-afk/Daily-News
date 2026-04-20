@@ -203,6 +203,7 @@ def fetch_newsapi(query: str, hours_back: int = 24) -> list[dict]:
 
 
 
+def send_telegram(text: str, parse_mode: str = "HTML") -> bool:
     """Send a message to Telegram channel."""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
