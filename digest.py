@@ -177,26 +177,76 @@ INDIA_POLICY_SIGNALS = [
 ]
 
 GEO_SIGNALS = [
-    # Energy & commodities with direct market impact
-    "oil", "crude", "opec", "opec+", "gas", "lng", "petroleum",
-    "strait of hormuz", "hormuz", "red sea", "shipping lane",
-    "supply chain", "port blockade", "freight", "tanker",
-    # Conflicts with supply chain / energy impact
-    "iran", "ukraine", "russia", "middle east", "taiwan", "south china sea",
-    "israel", "gaza", "hamas", "hezbollah", "pakistan china",
-    # Economic policy & institutions
-    "federal reserve", "fed rate", "interest rate", "ecb", "central bank",
-    "imf", "world bank", "wto", "g7", "g20", "brics",
-    "trade war", "tariff", "sanctions", "trade agreement",
-    "inflation", "recession", "gdp", "economic growth",
-    # Deaths / changes of globally significant people
-    "dies", "death of", "passed away", "assassination",
-    "warren buffett", "ray dalio", "jerome powell", "janet yellen",
-    "xi jinping", "trump", "modi", "fed chair", "treasury secretary",
-    # Geopolitical outcomes with market impact
-    "ceasefire", "peace deal", "coup", "regime change",
-    "nuclear", "missile", "blockade", "force majeure",
-    "election result", "government formation",
+    # ── Energy & shipping — direct market impact ───────────────────────────
+    "oil price", "crude price", "brent", "opec", "lng price",
+    "strait of hormuz", "hormuz", "red sea shipping", "shipping disruption",
+    "port blockade", "tanker", "freight rate", "force majeure",
+    # ── Trade & economic policy ────────────────────────────────────────────
+    "trade war", "tariff", "sanctions", "trade agreement", "trade deal",
+    "export ban", "import ban", "trade deficit", "trade surplus",
+    "wto", "g7", "g20", "brics summit",
+    # ── Central banks & macro ─────────────────────────────────────────────
+    "federal reserve", "fed rate", "interest rate decision", "rate hike",
+    "rate cut", "ecb rate", "central bank rate", "monetary policy",
+    "inflation data", "cpi data", "gdp growth", "recession",
+    # ── Conflict outcomes with direct economic consequence ─────────────────
+    "hormuz blockade", "oil supply", "energy supply", "gas supply",
+    "ceasefire deal", "peace agreement", "sanctions relief", "sanctions lifted",
+    "oil embargo", "grain corridor", "black sea grain",
+    # ── Deaths / resignations of globally market-significant figures ────────
+    "fed chair", "treasury secretary", "finance minister resigns",
+    "central bank governor", "imf chief", "world bank president",
+    "warren buffett", "ray dalio", "jerome powell", "elon musk",
+    # ── Currency & capital flows ───────────────────────────────────────────
+    "dollar index", "currency crisis", "sovereign default", "debt crisis",
+    "capital flight", "emerging markets sell-off",
+    # ── Specific high-impact economic events ──────────────────────────────
+    "coup", "regime change", "election result", "government formation",
+    "debt ceiling", "us default", "credit rating downgrade",
+    "nuclear deal", "iran nuclear",
+    # ── Iran/Ukraine/Russia — only when tied to specific economic outcomes ──
+    "iran oil", "iran sanctions", "iran deal", "iran nuclear",
+    "russia oil", "russia gas", "russia sanctions", "russia grain",
+    "ukraine grain", "ukraine reconstruction",
+    "tariff refund", "tariff ruled", "tariff unconstitutional",
+    # ── Energy policy statements with price impact ─────────────────────────
+    "gas prices", "energy prices", "fuel prices", "oil prices",
+    "energy secretary", "energy minister",
+]
+
+# ── Geo exclusion: headlines that pass the signal filter but are still noise ──
+GEO_EXCLUSION_PHRASES = [
+    # War body counts and daily battle updates
+    "death toll", "people have died", "killed in", "casualties",
+    "executes", "executed", "execution",
+    "arrests", "arrested", "detained",
+    # Human rights / activism
+    "amnesty international", "human rights watch", "predatory world order",
+    "slams netanyahu", "slams trump", "slams putin",
+    "war crimes", "civilian casualties",
+    # Political soap opera
+    "insider trading suspicion", "insider trading looming",
+    "boasts on", "boasting on social media", "trump boasts",
+    "labor secretary", "cabinet resigns", "staff resignation",
+    "sumud flotilla", "flotilla disrupts",
+    "statue", "jesus statue", "sledgehammer",
+    "tightens security", "security ahead of",
+    "combat drills", "military drills", "joint exercises",
+    "peace rally", "protest march", "demonstration",
+    "reverse migration", "ceramic hub",
+    # Regional politics with no India/market link
+    "ethiopia", "tigray", "bulgaria", "hungarian election",
+    "cuba confirms", "cuba talks", "philippines drills",
+    # Video/watch/live content
+    "watch:", "live updates:", "live blog", "live:",
+    # Generic war narrative
+    "how is the war", "can iran and", "find middle ground",
+    "what we know about", "deep historical mistrust",
+    "iran not planning to attend", "islamabad tightens",
+    "pretty far behind", "winning war", "mixed signals on peace",
+    "board of peace", "dp world", "gaza reconstruction",
+    "uk calls for toll-free", "toll-free hormuz",
+    "security tightening", "tighten security",
 ]
 
 CAPITAL_MARKETS_SIGNALS = [
@@ -367,6 +417,26 @@ def passes_section_filter(title: str, signals: list) -> bool:
     t = title.lower()
     return any(sig in t for sig in signals)
 
+def passes_geo_filter(title: str) -> bool:
+    """Two-layer geo filter: must pass inclusion AND must not match exclusion."""
+    t = title.lower()
+    passes_inclusion = any(sig in t for sig in GEO_SIGNALS)
+    passes_exclusion = not any(ex in t for ex in GEO_EXCLUSION_PHRASES)
+    return passes_inclusion and passes_exclusion
+
+def passes_commodity_filter(title: str) -> bool:
+    """Commodity filter: passes signal check, blocks airline ops and unrelated stories."""
+    t = title.lower()
+    commodity_noise = [
+        "airline", "air canada", "flight", "airfare",
+        "scraps routes", "scraps key",
+        "two presidents, two decisions",
+        "two presidents two decisions",
+    ]
+    if any(n in t for n in commodity_noise):
+        return False
+    return any(sig in t for sig in COMMODITIES_SIGNALS)
+
 def passes_media_filter(title: str) -> bool:
     t = title.lower()
     return not any(phrase in t for phrase in MEDIA_NOISE)
@@ -406,11 +476,15 @@ def fetch_rss(url: str) -> list:
         return []
 
 
-def fetch_section_items(feed_urls: list, section_signals: list = None) -> list:
+def fetch_section_items(feed_urls: list, section_signals: list = None,
+                        geo_filter: bool = False, commodity_filter: bool = False) -> list:
     """
     Fetch all feeds for a section.
-    Apply noise filter. Apply section-specific signal filter if provided.
-    Return deduplicated list (URL-level dedup within section).
+    Apply noise filter, then one of:
+      - section_signals: keyword inclusion list
+      - geo_filter: two-layer geo filter (inclusion + exclusion)
+      - commodity_filter: commodity-specific filter
+      - no filter: pass all non-noise items (for pre-curated feeds)
     """
     all_items = []
     seen_urls = set()
@@ -421,8 +495,15 @@ def fetch_section_items(feed_urls: list, section_signals: list = None) -> list:
             seen_urls.add(item["url"])
             if not passes_noise_filter(item["title"]):
                 continue
-            if section_signals and not passes_section_filter(item["title"], section_signals):
-                continue
+            if geo_filter:
+                if not passes_geo_filter(item["title"]):
+                    continue
+            elif commodity_filter:
+                if not passes_commodity_filter(item["title"]):
+                    continue
+            elif section_signals:
+                if not passes_section_filter(item["title"], section_signals):
+                    continue
             all_items.append(item)
     return all_items
 
@@ -554,7 +635,7 @@ def build_and_send_digest():
     send_section("⚡ <b>PRIORITY — Capital Markets &amp; Listed Companies</b> ⚡", items)
 
     # ── 3. Geopolitical (market-relevant) ─────────────────────────────────────
-    items = fetch_section_items(RSS_SOURCES["geopolitical"], GEO_SIGNALS)
+    items = fetch_section_items(RSS_SOURCES["geopolitical"], geo_filter=True)
     items = smart_dedup(items, seen_fps)
     send_section("<b>🌐 Geopolitical (Market-Relevant)</b>", items)
 
@@ -565,7 +646,7 @@ def build_and_send_digest():
     send_section("<b>🌍 Global Markets &amp; Macro</b>", items)
 
     # ── 5. Commodities & Supply Chain ─────────────────────────────────────────
-    items = fetch_section_items(RSS_SOURCES["commodities"], COMMODITIES_SIGNALS)
+    items = fetch_section_items(RSS_SOURCES["commodities"], commodity_filter=True)
     items = smart_dedup(items, seen_fps)
     send_section("<b>🛢️ Commodities &amp; Supply Chain</b>", items)
 
