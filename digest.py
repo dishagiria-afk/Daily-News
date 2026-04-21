@@ -322,11 +322,28 @@ YOUTUBE_CHANNELS = [
 ]
 
 PODCAST_FEEDS = [
-    {"url": "https://rss.art19.com/invest-like-the-best",           "name": "Invest Like The Best"},
-    {"url": "https://rss.art19.com/acquired",                       "name": "Acquired"},
-    {"url": "https://feeds.simplecast.com/0lxBYiKU",                "name": "We Study Billionaires"},
-    {"url": "https://marcellusinvestment.com/feed/podcast/",        "name": "Marcellus Podcast"},
-    {"url": "https://feeds.transistor.fm/capitalmind-premium-podcast", "name": "Capitalmind Podcast"},
+    # ── Indian Finance & Markets ───────────────────────────────────────────
+    # Finshots — free daily Indian market explainer (genuine open RSS)
+    {"url": "https://finshots.in/archive/rss/",                         "name": "Finshots Daily"},
+    # Paisa Vaisa — leading Indian personal finance & investing podcast
+    {"url": "https://feeds.acast.com/public/shows/paisa-vaisa",         "name": "Paisa Vaisa"},
+    # Marcellus — Indian fund manager, direct WordPress RSS (open)
+    {"url": "https://marcellusinvestment.com/feed/",                    "name": "Marcellus Insights"},
+    # ET Markets podcast
+    {"url": "https://economictimes.indiatimes.com/podcast/rss.cms",     "name": "ET Markets Podcast"},
+    # ── Global Investor Podcasts ───────────────────────────────────────────
+    # BBC Business Daily — open BBC RSS
+    {"url": "https://podcasts.files.bbci.co.uk/p002vsxs.rss",          "name": "BBC Business Daily"},
+    # BBC Global News — open BBC RSS
+    {"url": "https://podcasts.files.bbci.co.uk/p02nq0gn.rss",          "name": "BBC Global News"},
+    # Odd Lots (Bloomberg) — public acast RSS
+    {"url": "https://feeds.acast.com/public/shows/odd-lots",            "name": "Odd Lots (Bloomberg)"},
+    # Invest Like The Best — public Colossus RSS
+    {"url": "https://feeds.colossus.fm/invest-like-the-best",           "name": "Invest Like The Best"},
+    # Acquired — direct public RSS
+    {"url": "https://acquired.fm/rss",                                  "name": "Acquired"},
+    # MacroVoices — open RSS
+    {"url": "https://www.macrovoices.com/feed/podcast",                 "name": "MacroVoices"},
 ]
 
 
@@ -536,21 +553,40 @@ def fetch_youtube_videos(hours_back: int = 48) -> list:
 
 
 def fetch_podcast_episodes() -> list:
+    """
+    Fetch latest episode from each podcast feed.
+    Uses browser-like User-Agent to avoid bot blocks.
+    Reports which feeds failed so they can be replaced.
+    """
     results = []
+    failed = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/rss+xml, application/xml, text/xml, */*",
+    }
     for pod in PODCAST_FEEDS:
         try:
-            feed = feedparser.parse(pod["url"])
+            raw = requests.get(pod["url"], timeout=12, headers=headers)
+            feed = feedparser.parse(raw.content)
             if feed.entries:
                 ep    = feed.entries[0]
-                title = ep.get("title", "")
-                link  = ep.get("link", "")
+                title = ep.get("title", "").strip()
+                link  = ep.get("link", "") or ep.get("enclosures", [{}])[0].get("href", "")
                 if title and link and passes_media_filter(title):
                     results.append({
                         "title": f"{title} [{pod['name']}]",
                         "url":   link,
                     })
+            else:
+                failed.append(pod["name"])
         except Exception as e:
+            failed.append(pod["name"])
             log.warning(f"Podcast failed [{pod['name']}]: {e}")
+
+    if failed:
+        log.warning(f"Podcast feeds with no content: {', '.join(failed)}")
     return results
 
 
